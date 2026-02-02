@@ -28,7 +28,7 @@
 ## ⚙️ Конфигурация компонентов
 
 ### Backend (Flask-приложение)
-*   **Образ:** `your-dockerhub-username/dataops-webapp:1.0.0` (необходимо заменить в файле)
+*   **Образ:** `/dataops-webapp:1.0.0`
 *   **Ресурсы:**
     *   Requests: `100m` CPU, `128Mi` памяти
     *   Limits: `200m` CPU, `256Mi` памяти
