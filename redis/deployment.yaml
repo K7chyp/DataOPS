@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  labels:
+    app: redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine # Используем легкий образ
+        ports:
+        - containerPort: 6379
+        # 3. ОГРАНИЧЕНИЯ РЕСУРСОВ ДЛЯ REDIS (ЗАДАНИЕ 3)
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        # Контейнер Redis завершится при превышении лимита памяти (OOM)
+        command: ["redis-server"]
+        args: ["--maxmemory", "100mb", "--maxmemory-policy", "allkeys-lru"]

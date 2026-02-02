@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dataops-webapp
+  labels:
+    app: dataops-webapp
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: dataops-webapp
+  template:
+    metadata:
+      labels:
+        app: dataops-webapp
+    spec:
+      containers:
+      - name: webapp
+        image: nikitavoronovvvv/dataops-webapp:1.0.0
+        ports:
+        - containerPort: 5000
+        env:
+        - name: FLASK_ENV
+          value: "production"
+        # 1. НАСТРОЙКА РЕСУРСОВ (ЗАДАНИЕ 1)
+        resources:
+          # Запросы (requests) - гарантированно выделяемое количество
+          requests:
+            memory: "128Mi"
+            cpu: "100m" # 0.1 ядра CPU
+          # Лимиты (limits) - жесткий предел, который нельзя превысить
+          limits:
+            memory: "256Mi"
+            cpu: "200m" # 0.2 ядра CPU
+        # 2. НАСТРОЙКА SHARED MEMORY (ЗАДАНИЕ 2)
+        volumeMounts:
+        - name: dshm
+          mountPath: /dev/shm
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 5000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          failureThreshold: 30
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 5000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 5000
+          initialDelaySeconds: 15
+          periodSeconds: 20
+      # 2.1. Определяем том для shared memory
+      volumes:
+      - name: dshm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 128Mi # Размер /dev/shm
