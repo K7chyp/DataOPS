@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  jupyterhub:
+    build: .
+    container_name: jupyterhub
+    ports:
+      - "8000:8000"
+    volumes:
+        - ./jupyterhub_config.py:/srv/jupyterhub/jupyterhub_config.py
+        - /var/run/docker.sock:/var/run/docker.sock   # необходимо для DockerSpawner
+        - jupyterhub-data:/home   # (опционально) сохранять домашние папки
+    environment:
+        - JUPYTERHUB_CRYPT_KEY=${JUPYTERHUB_CRYPT_KEY:-my_crypt_key_32_bytes_or_more}
+    networks:
+      - jupyterhub-network
+
+networks:
+  jupyterhub-network:
+
+volumes:
+  jupyterhub-data:

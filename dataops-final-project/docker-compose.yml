@@ -1,0 +1,228 @@
+version: '3.8'
+
+networks:
+  dataops-network:
+    driver: bridge
+
+# ===================== MLflow =====================
+services:
+  mlflow-postgres:
+    image: postgres:14
+    container_name: mlflow-postgres
+    environment:
+      POSTGRES_USER: ${MLFLOW_DB_USER:-mlflow_user}
+      POSTGRES_PASSWORD: ${MLFLOW_DB_PASSWORD:-mlflow_pass}
+      POSTGRES_DB: ${MLFLOW_DB_NAME:-mlflow_db}
+    volumes:
+      - mlflow-postgres-data:/var/lib/postgresql/data
+    networks:
+      - dataops-network
+
+  mlflow:
+    build: ./mlflow
+    container_name: mlflow-server
+    ports:
+      - "5001:5000"
+    environment:
+      MLFLOW_DB_USER: ${MLFLOW_DB_USER:-mlflow_user}
+      MLFLOW_DB_PASSWORD: ${MLFLOW_DB_PASSWORD:-mlflow_pass}
+      MLFLOW_DB_NAME: ${MLFLOW_DB_NAME:-mlflow_db}
+    volumes:
+      - ./mlflow/artifacts:/mlflow/artifacts
+    depends_on:
+      - mlflow-postgres
+    networks:
+      - dataops-network
+
+# ===================== Airflow =====================
+  airflow-postgres:
+    image: postgres:14
+    container_name: airflow-postgres
+    environment:
+      POSTGRES_USER: ${AIRFLOW_DB_USER:-airflow_user}
+      POSTGRES_PASSWORD: ${AIRFLOW_DB_PASSWORD:-airflow_pass}
+      POSTGRES_DB: ${AIRFLOW_DB_NAME:-airflow_db}
+    volumes:
+      - airflow-postgres-data:/var/lib/postgresql/data
+    networks:
+      - dataops-network
+
+  airflow-webserver:
+    image: apache/airflow:2.7.1-python3.11
+    container_name: airflow-webserver
+    ports:
+      - "8080:8080"
+    environment:
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${AIRFLOW_DB_USER:-airflow_user}:${AIRFLOW_DB_PASSWORD:-airflow_pass}@airflow-postgres:5432/${AIRFLOW_DB_NAME:-airflow_db}
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY:-my_secret_key}
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+    depends_on:
+      - airflow-postgres
+    networks:
+      - dataops-network
+    command: webserver
+
+  airflow-scheduler:
+    image: apache/airflow:2.7.1-python3.11
+    container_name: airflow-scheduler
+    environment:
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${AIRFLOW_DB_USER:-airflow_user}:${AIRFLOW_DB_PASSWORD:-airflow_pass}@airflow-postgres:5432/${AIRFLOW_DB_NAME:-airflow_db}
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY:-my_secret_key}
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+    depends_on:
+      - airflow-postgres
+    networks:
+      - dataops-network
+    command: scheduler
+
+  airflow-triggerer:
+    image: apache/airflow:2.7.1-python3.11
+    container_name: airflow-triggerer
+    environment:
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${AIRFLOW_DB_USER:-airflow_user}:${AIRFLOW_DB_PASSWORD:-airflow_pass}@airflow-postgres:5432/${AIRFLOW_DB_NAME:-airflow_db}
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY:-my_secret_key}
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+    depends_on:
+      - airflow-postgres
+    networks:
+      - dataops-network
+    command: triggerer
+
+# ===================== LakeFS =====================
+  lakefs-postgres:
+    image: postgres:14
+    container_name: lakefs-postgres
+    environment:
+      POSTGRES_USER: ${LAKEFS_DB_USER:-lakefs_user}
+      POSTGRES_PASSWORD: ${LAKEFS_DB_PASSWORD:-lakefs_pass}
+      POSTGRES_DB: ${LAKEFS_DB_NAME:-lakefs_db}
+    volumes:
+      - lakefs-postgres-data:/var/lib/postgresql/data
+    networks:
+      - dataops-network
+
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    networks:
+      - dataops-network
+
+  lakefs:
+    image: treeverse/lakefs:latest
+    container_name: lakefs
+    ports:
+      - "8010:8000"
+    environment:
+      LAKEFS_DATABASE_TYPE: postgres
+      LAKEFS_DATABASE_POSTGRES_CONNECTION_STRING: postgres://${LAKEFS_DB_USER:-lakefs_user}:${LAKEFS_DB_PASSWORD:-lakefs_pass}@lakefs-postgres:5432/${LAKEFS_DB_NAME:-lakefs_db}?sslmode=disable
+      LAKEFS_AUTH_ENCRYPT_SECRET_KEY: ${LAKEFS_SECRET_KEY:-some_random_secret_key}
+      LAKEFS_BLOCKSTORE_TYPE: s3
+      LAKEFS_BLOCKSTORE_S3_CREDENTIALS_ACCESS_KEY_ID: ${MINIO_ACCESS_KEY:-minioadmin}
+      LAKEFS_BLOCKSTORE_S3_CREDENTIALS_SECRET_ACCESS_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      LAKEFS_BLOCKSTORE_S3_ENDPOINT: http://minio:9000
+      LAKEFS_BLOCKSTORE_S3_FORCE_PATH_STYLE: true
+    depends_on:
+      - lakefs-postgres
+      - minio
+    networks:
+      - dataops-network
+
+# ===================== JupyterHub =====================
+  jupyterhub:
+    build: ./jupyterhub
+    container_name: jupyterhub
+    ports:
+      - "8020:8000"
+    volumes:
+      - ./jupyterhub/jupyterhub_config.py:/srv/jupyterhub/jupyterhub_config.py
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - JUPYTERHUB_CRYPT_KEY=${JUPYTERHUB_CRYPT_KEY:-my_crypt_key_32_bytes_or_more}
+    networks:
+      - dataops-network
+
+# ===================== ML-сервис =====================
+  ml-postgres:
+    image: postgres:14
+    container_name: ml-postgres
+    environment:
+      POSTGRES_USER: ${ML_DB_USER:-ml_user}
+      POSTGRES_PASSWORD: ${ML_DB_PASSWORD:-ml_pass}
+      POSTGRES_DB: ${ML_DB_NAME:-ml_logs}
+    volumes:
+      - ml-postgres-data:/var/lib/postgresql/data
+    networks:
+      - dataops-network
+
+  ml-api:
+    build: ./ml_service
+    container_name: ml-api
+    ports:
+      - "8001:8000"
+    environment:
+      DATABASE_URL: postgresql://${ML_DB_USER:-ml_user}:${ML_DB_PASSWORD:-ml_pass}@ml-postgres:5432/${ML_DB_NAME:-ml_logs}
+    depends_on:
+      - ml-postgres
+    networks:
+      - dataops-network
+
+# ===================== Мониторинг =====================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    networks:
+      - dataops-network
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+    depends_on:
+      - prometheus
+    networks:
+      - dataops-network
+
+volumes:
+  mlflow-postgres-data:
+  airflow-postgres-data:
+  lakefs-postgres-data:
+  ml-postgres-data:
+  minio-data:
+  prometheus-data:
+  grafana-data:
