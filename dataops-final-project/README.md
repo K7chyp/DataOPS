@@ -22,3 +22,8 @@
 - Prometheus: http://localhost:9090
 - Grafana: http://localhost:3000 (admin/admin)
 
+## Картинки
+<img width="1568" height="813" alt="image" src="https://github.com/user-attachments/assets/aa002465-f9c0-44ec-86a3-f18ab5825c01" />
+<img width="1493" height="857" alt="image" src="https://github.com/user-attachments/assets/77d1785f-1015-4135-bfca-31dd39155604" />
+
+
